@@ -21,6 +21,15 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.bookstore.data.mapper.CartMapper
 import com.example.bookstore.viewmodel.CartViewModel
+import com.example.bookstore.data.model.LoginResponse
+import com.example.bookstore.data.local.UserManager
+import com.example.bookstore.data.repository.OrderRepository
+import com.example.bookstore.data.model.CreateOrderRequest
+import com.example.bookstore.data.model.OrderItemRequest
+import com.example.bookstore.data.model.PaymentRequest
+import com.example.bookstore.viewmodel.OrderViewModel
+import com.example.bookstore.viewmodel.CreateOrderUiState
+import com.example.bookstore.viewmodel.PayOrderUiState
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -30,11 +39,14 @@ fun CartScreen(
     onSavedClick: () -> Unit,
     onHomeClick: () -> Unit,
     onCheckoutClick: () -> Unit,
-    viewModel: CartViewModel = hiltViewModel()
+    viewModel: CartViewModel = hiltViewModel(),
+    orderViewModel: OrderViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val createOrderState by orderViewModel.createOrderState.collectAsState()
+    val payOrderState by orderViewModel.payOrderState.collectAsState()
     var selectedTab by remember { mutableStateOf(1) }
-    var selectedPickupPoint by remember { mutableStateOf("") }
+    var deliveryAddress by remember { mutableStateOf("") }
     var orderComment by remember { mutableStateOf("") }
 
     // Загружаем корзину при первом запуске
@@ -42,25 +54,37 @@ fun CartScreen(
         viewModel.loadCart()
     }
 
+    // Обрабатываем успешное создание заказа - сразу оплачиваем
+    LaunchedEffect(createOrderState) {
+        when (val state = createOrderState) {
+            is com.example.bookstore.viewmodel.CreateOrderUiState.Success -> {
+                val cartState = uiState
+                if (cartState is com.example.bookstore.viewmodel.CartUiState.Success) {
+                    val totalPrice = cartState.cart.totalPrice
+                    orderViewModel.payOrder(state.orderId, "Card", totalPrice)
+                }
+            }
+            else -> {}
+        }
+    }
+
+    // Обрабатываем успешную оплату - переходим на главную
+    LaunchedEffect(payOrderState) {
+        if (payOrderState is com.example.bookstore.viewmodel.PayOrderUiState.Success) {
+            onHomeClick()
+        }
+    }
+
     // Create a local variable for smart casting
     val currentState = uiState
     val cartItems = when (currentState) {
         is com.example.bookstore.viewmodel.CartUiState.Success -> {
-            // Фильтруем элементы с валидными bookId
             CartMapper.toUiCartItems(currentState.cart)
                 .filter { it.book.id.isNotBlank() && 
                          it.book.id != "00000000-0000-0000-0000-000000000000" }
         }
         else -> emptyList()
     }
-    // Список пунктов выдачи
-    val pickupPoints = listOf(
-        "Main Store - 123 Book Street",
-        "Downtown Branch - 456 Reading Ave",
-        "Shopping Mall - Bookstore #789",
-        "University Campus - Student Center",
-        "Central Library - Book Pickup"
-    )
 
     Scaffold(
         topBar = {
@@ -114,7 +138,6 @@ fun CartScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            // Access message from the local variable
                             text = currentState.message,
                             color = Color.Red,
                             textAlign = TextAlign.Center
@@ -131,12 +154,38 @@ fun CartScreen(
                             viewModel.removeBookFromCart(book.id)
                             viewModel.addBookToCart(book.id, newQuantity)
                         },
-                        onCheckoutClick = onCheckoutClick,
-                        selectedPickupPoint = selectedPickupPoint,
-                        onPickupPointChange = { selectedPickupPoint = it },
+                        onCheckoutClick = {
+                            val cartState = uiState
+                            if (cartState is com.example.bookstore.viewmodel.CartUiState.Success) {
+                                val validOrderItems = cartState.cart.cartItems
+                                    .filter { cartItem ->
+                                        cartItem.bookId.isNotBlank() &&
+                                        cartItem.bookId != "00000000-0000-0000-0000-000000000000" &&
+                                        cartItem.bookId.matches(Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))
+                                    }
+                                    .map { cartItem ->
+                                        OrderItemRequest(
+                                            bookId = cartItem.bookId,
+                                            count = cartItem.quantity
+                                        )
+                                    }
+                                
+                                if (validOrderItems.isNotEmpty() && deliveryAddress.isNotBlank()) {
+                                    val request = CreateOrderRequest(
+                                        customerNotes = orderComment.ifBlank { null },
+                                        deliveryAddress = deliveryAddress,
+                                        orderItems = validOrderItems
+                                    )
+                                    orderViewModel.createOrder(request)
+                                }
+                            }
+                        },
+                        deliveryAddress = deliveryAddress,
+                        onDeliveryAddressChange = { deliveryAddress = it },
                         orderComment = orderComment,
                         onOrderCommentChange = { orderComment = it },
-                        pickupPoints = pickupPoints,
+                        isLoading = createOrderState is com.example.bookstore.viewmodel.CreateOrderUiState.Loading ||
+                                   payOrderState is com.example.bookstore.viewmodel.PayOrderUiState.Loading,
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(innerPadding)
@@ -182,11 +231,11 @@ fun CartContent(
     onRemoveItem: (Book) -> Unit,
     onUpdateQuantity: (Book, Int) -> Unit,
     onCheckoutClick: () -> Unit,
-    selectedPickupPoint: String,
-    onPickupPointChange: (String) -> Unit,
+    deliveryAddress: String,
+    onDeliveryAddressChange: (String) -> Unit,
     orderComment: String,
     onOrderCommentChange: (String) -> Unit,
-    pickupPoints: List<String>,
+    isLoading: Boolean,
     modifier: Modifier = Modifier
 ) {
     val totalPrice = cartItems.sumOf { it.book.price * it.quantity }
@@ -194,7 +243,6 @@ fun CartContent(
     Column(
         modifier = modifier
     ) {
-        // Cart Items List
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
@@ -212,12 +260,11 @@ fun CartContent(
                 )
             }
 
-            // Pickup Point Selection
+            // Delivery Address Input
             item {
-                PickupPointSelector(
-                    selectedPickupPoint = selectedPickupPoint,
-                    onPickupPointChange = onPickupPointChange,
-                    pickupPoints = pickupPoints,
+                DeliveryAddressInput(
+                    address = deliveryAddress,
+                    onAddressChange = onDeliveryAddressChange,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 16.dp)
@@ -234,24 +281,11 @@ fun CartContent(
                         .padding(bottom = 16.dp)
                 )
             }
-
-//            // Order Summary
-//            item {
-//                OrderSummary(
-//                    totalPrice = totalPrice,
-//                    itemCount = cartItems.size,
-//                    modifier = Modifier.fillMaxWidth()
-//                )
-//            }
         }
 
         // Checkout Button
         Button(
-            onClick = {
-                if (selectedPickupPoint.isNotEmpty()) {
-                    onCheckoutClick()
-                }
-            },
+            onClick = onCheckoutClick,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(60.dp)
@@ -261,32 +295,33 @@ fun CartContent(
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color(0xFF2231AA)
             ),
-            enabled = selectedPickupPoint.isNotEmpty()
+            enabled = deliveryAddress.isNotBlank() && !isLoading
         ) {
-            Text(
-                text = if (selectedPickupPoint.isNotEmpty()) {
-                    "Checkout - $${String.format("%.2f", totalPrice)}"
-                } else {
-                    "Select Pickup Point"
-                },
-                color = Color.White,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium
-            )
+            if (isLoading) {
+                CircularProgressIndicator(
+                    color = Color.White,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(20.dp)
+                )
+            } else {
+                Text(
+                    text = "Pay - $${String.format("%.2f", totalPrice)}",
+                    color = Color.White,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PickupPointSelector(
-    selectedPickupPoint: String,
-    onPickupPointChange: (String) -> Unit,
-    pickupPoints: List<String>,
+fun DeliveryAddressInput(
+    address: String,
+    onAddressChange: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var expanded by remember { mutableStateOf(false) }
-
     Card(
         modifier = modifier,
         shape = RoundedCornerShape(12.dp),
@@ -300,71 +335,30 @@ fun PickupPointSelector(
                 .padding(16.dp)
         ) {
             Text(
-                text = "Pickup Point",
+                text = "Delivery Address",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Medium,
                 color = Color(0xFF1D1B20),
                 modifier = Modifier.padding(bottom = 12.dp)
             )
 
-            ExposedDropdownMenuBox(
-                expanded = expanded,
-                onExpandedChange = { expanded = !expanded }
-            ) {
-                TextField(
-                    value = selectedPickupPoint,
-                    onValueChange = {},
-                    readOnly = true,
-                    trailingIcon = {
-                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
-                    },
-                    placeholder = {
-                        Text(
-                            text = "Select pickup point",
-                            color = Color.Gray
-                        )
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White,
-                        focusedBorderColor = Color.Transparent,
-                        unfocusedBorderColor = Color.Transparent
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .menuAnchor()
-                )
-
-                ExposedDropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false }
-                ) {
-                    pickupPoints.forEach { point ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = point,
-                                    fontSize = 14.sp,
-                                    color = Color(0xFF1D1B20)
-                                )
-                            },
-                            onClick = {
-                                onPickupPointChange(point)
-                                expanded = false
-                            }
-                        )
-                    }
-                }
-            }
-
-            if (selectedPickupPoint.isNotEmpty()) {
-                Text(
-                    text = "Selected: $selectedPickupPoint",
-                    fontSize = 12.sp,
-                    color = Color(0xFF49454F),
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-            }
+            TextField(
+                value = address,
+                onValueChange = onAddressChange,
+                placeholder = {
+                    Text(
+                        text = "Enter delivery address",
+                        color = Color.Gray
+                    )
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White,
+                    focusedBorderColor = Color.Transparent,
+                    unfocusedBorderColor = Color.Transparent
+                ),
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }

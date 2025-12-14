@@ -71,8 +71,8 @@ fun AppNavigation() {
             onBackClick = { navigationController.navigateBack() },
             onProfileClick = onProfileClick,
             onSavedClick = { navigationController.navigateTo("saved") },
-            onHomeClick = { navigationController.navigateTo("main") }, // Добавляем Home
-            onCheckoutClick = { navigationController.navigateTo("payment") }
+            onHomeClick = { navigationController.navigateTo("main") },
+            onCheckoutClick = { /* Обрабатывается внутри CartScreen */ }
         )
         "main" -> MainScreen(
             onBackClick = { navigationController.navigateBack() },
@@ -136,14 +136,5 @@ fun AppNavigation() {
                 }
             }
         }
-        "payment" -> PaymentScreen(
-            onBackClick = { navigationController.navigateBack() },
-            onProfileClick = onProfileClick,
-            onSavedClick = { navigationController.navigateTo("saved") },
-            onHomeClick = { navigationController.navigateTo("main") }, // Добавляем Home
-            onPaymentComplete = {
-                navigationController.navigateTo("main")
-            }
-        )
     }
 }

@@ -34,17 +34,12 @@ class UserManager @Inject constructor(
 
     fun saveLoginData(loginResponse: LoginResponse, email: String) {
         prefs.edit().apply {
-            putString(KEY_EMAIL, email)
+            putString(KEY_EMAIL, loginResponse.userDetails.email)
             putString(KEY_ACCESS_TOKEN, loginResponse.accessToken)
             putString(KEY_REFRESH_TOKEN, loginResponse.refreshToken)
+            putString(KEY_FIRST_NAME, loginResponse.userDetails.firstName)
+            putString(KEY_LAST_NAME, loginResponse.userDetails.lastName)
             putBoolean(KEY_IS_LOGGED_IN, true)
-            
-            // Пытаемся декодировать JWT токен для получения дополнительной информации
-            val emailFromToken = decodeEmailFromToken(loginResponse.accessToken)
-            if (emailFromToken != null) {
-                putString(KEY_EMAIL, emailFromToken)
-            }
-            
             apply()
         }
         _isLoggedInFlow.value = true

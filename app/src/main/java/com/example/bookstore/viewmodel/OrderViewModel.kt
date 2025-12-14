@@ -24,6 +24,9 @@ class OrderViewModel @Inject constructor(
     private val _createOrderState = MutableStateFlow<CreateOrderUiState>(CreateOrderUiState.Idle)
     val createOrderState: StateFlow<CreateOrderUiState> = _createOrderState.asStateFlow()
 
+    private val _payOrderState = MutableStateFlow<PayOrderUiState>(PayOrderUiState.Idle)
+    val payOrderState: StateFlow<PayOrderUiState> = _payOrderState.asStateFlow()
+
     fun loadOrders(pageNumber: Int? = null, pageSize: Int? = null) {
         viewModelScope.launch {
             _ordersState.value = OrdersUiState.Loading
@@ -43,8 +46,8 @@ class OrderViewModel @Inject constructor(
             _createOrderState.value = CreateOrderUiState.Loading
             try {
                 val result = orderRepository.createOrder(request)
-                result.onSuccess {
-                    _createOrderState.value = CreateOrderUiState.Success
+                result.onSuccess { orderId ->
+                    _createOrderState.value = CreateOrderUiState.Success(orderId)
                     loadOrders() // Reload orders after creating
                 }.onFailure { e ->
                     _createOrderState.value = CreateOrderUiState.Error(
@@ -72,6 +75,7 @@ class OrderViewModel @Inject constructor(
 
     fun payOrder(orderId: String, paymentMethod: String, amount: Double) {
         viewModelScope.launch {
+            _payOrderState.value = PayOrderUiState.Loading
             try {
                 val request = PaymentRequest(
                     paymentMethod = paymentMethod,
@@ -80,12 +84,17 @@ class OrderViewModel @Inject constructor(
                 )
                 val result = orderRepository.payOrder(orderId, request)
                 result.onSuccess {
+                    _payOrderState.value = PayOrderUiState.Success
                     loadOrders() // Reload orders after payment
                 }.onFailure { e ->
-                    // Handle error
+                    _payOrderState.value = PayOrderUiState.Error(
+                        message = e.message ?: "Failed to pay order"
+                    )
                 }
             } catch (e: Exception) {
-                // Handle error
+                _payOrderState.value = PayOrderUiState.Error(
+                    message = e.message ?: "Failed to pay order"
+                )
             }
         }
     }
@@ -101,6 +110,13 @@ sealed class OrdersUiState {
 sealed class CreateOrderUiState {
     data object Idle : CreateOrderUiState()
     data object Loading : CreateOrderUiState()
-    data object Success : CreateOrderUiState()
+    data class Success(val orderId: String) : CreateOrderUiState()
     data class Error(val message: String) : CreateOrderUiState()
+}
+
+sealed class PayOrderUiState {
+    data object Idle : PayOrderUiState()
+    data object Loading : PayOrderUiState()
+    data object Success : PayOrderUiState()
+    data class Error(val message: String) : PayOrderUiState()
 }

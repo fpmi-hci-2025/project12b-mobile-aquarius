@@ -33,8 +33,8 @@ class LoginViewModel @Inject constructor(
                 )
 
                 val response = authRepository.login(request)
-                // Сохраняем токены и email (email берем из запроса, так как его нет в ответе)
-                userManager.saveLoginData(response, email)
+                // Сохраняем данные из ответа (теперь email и имя есть в userDetails)
+                userManager.saveLoginData(response, response.userDetails.email)
                 _uiState.value = LoginUiState.Success(response)
             } catch (e: Exception) {
                 _uiState.value = LoginUiState.Error(
