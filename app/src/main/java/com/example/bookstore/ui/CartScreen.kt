@@ -30,6 +30,10 @@ import com.example.bookstore.data.model.PaymentRequest
 import com.example.bookstore.viewmodel.OrderViewModel
 import com.example.bookstore.viewmodel.CreateOrderUiState
 import com.example.bookstore.viewmodel.PayOrderUiState
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,16 +52,31 @@ fun CartScreen(
     var selectedTab by remember { mutableStateOf(1) }
     var deliveryAddress by remember { mutableStateOf("") }
     var orderComment by remember { mutableStateOf("") }
+    
+    val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
 
     // Загружаем корзину при первом запуске
     LaunchedEffect(Unit) {
         viewModel.loadCart()
     }
 
-    // Обрабатываем успешное создание заказа - сразу оплачиваем
+    // Обрабатываем ошибки создания заказа
     LaunchedEffect(createOrderState) {
         when (val state = createOrderState) {
+            is com.example.bookstore.viewmodel.CreateOrderUiState.Error -> {
+                coroutineScope.launch {
+                    val result = snackbarHostState.showSnackbar(
+                        message = state.message,
+                        duration = SnackbarDuration.Long
+                    )
+                    if (result == SnackbarResult.Dismissed) {
+                        orderViewModel.resetCreateOrderState()
+                    }
+                }
+            }
             is com.example.bookstore.viewmodel.CreateOrderUiState.Success -> {
+                // Заказ создан успешно - сразу оплачиваем
                 val cartState = uiState
                 if (cartState is com.example.bookstore.viewmodel.CartUiState.Success) {
                     val totalPrice = cartState.cart.totalPrice
@@ -68,10 +87,25 @@ fun CartScreen(
         }
     }
 
-    // Обрабатываем успешную оплату - переходим на главную
+    // Обрабатываем ошибки оплаты
     LaunchedEffect(payOrderState) {
-        if (payOrderState is com.example.bookstore.viewmodel.PayOrderUiState.Success) {
-            onHomeClick()
+        when (val state = payOrderState) {
+            is com.example.bookstore.viewmodel.PayOrderUiState.Error -> {
+                coroutineScope.launch {
+                    val result = snackbarHostState.showSnackbar(
+                        message = state.message,
+                        duration = SnackbarDuration.Long
+                    )
+                    if (result == SnackbarResult.Dismissed) {
+                        orderViewModel.resetPayOrderState()
+                    }
+                }
+            }
+            is com.example.bookstore.viewmodel.PayOrderUiState.Success -> {
+                // Оплата успешна - переходим на главную
+                onHomeClick()
+            }
+            else -> {}
         }
     }
 
@@ -87,6 +121,9 @@ fun CartScreen(
     }
 
     Scaffold(
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState)
+        },
         topBar = {
             CommonAppBar(
                 title = "Cart",

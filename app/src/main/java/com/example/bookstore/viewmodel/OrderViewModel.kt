@@ -98,6 +98,14 @@ class OrderViewModel @Inject constructor(
             }
         }
     }
+
+    fun resetCreateOrderState() {
+        _createOrderState.value = CreateOrderUiState.Idle
+    }
+
+    fun resetPayOrderState() {
+        _payOrderState.value = PayOrderUiState.Idle
+    }
 }
 
 sealed class OrdersUiState {
