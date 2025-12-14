@@ -18,6 +18,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.bookstore.data.mapper.CartMapper
+import com.example.bookstore.viewmodel.CartViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -26,13 +29,30 @@ fun CartScreen(
     onProfileClick: () -> Unit,
     onSavedClick: () -> Unit,
     onHomeClick: () -> Unit,
-    onCheckoutClick: () -> Unit
+    onCheckoutClick: () -> Unit,
+    viewModel: CartViewModel = hiltViewModel()
 ) {
-    var cartItems by remember { mutableStateOf(getSampleCartItems()) }
+    val uiState by viewModel.uiState.collectAsState()
     var selectedTab by remember { mutableStateOf(1) }
     var selectedPickupPoint by remember { mutableStateOf("") }
     var orderComment by remember { mutableStateOf("") }
 
+    // Загружаем корзину при первом запуске
+    LaunchedEffect(Unit) {
+        viewModel.loadCart()
+    }
+
+    // Create a local variable for smart casting
+    val currentState = uiState
+    val cartItems = when (currentState) {
+        is com.example.bookstore.viewmodel.CartUiState.Success -> {
+            // Фильтруем элементы с валидными bookId
+            CartMapper.toUiCartItems(currentState.cart)
+                .filter { it.book.id.isNotBlank() && 
+                         it.book.id != "00000000-0000-0000-0000-000000000000" }
+        }
+        else -> emptyList()
+    }
     // Список пунктов выдачи
     val pickupPoints = listOf(
         "Main Store - 123 Book Street",
@@ -75,30 +95,54 @@ fun CartScreen(
                     .padding(innerPadding)
             )
         } else {
-            CartContent(
-                cartItems = cartItems,
-                onRemoveItem = { book ->
-                    cartItems = cartItems.filter { it.book.id != book.id }
-                },
-                onUpdateQuantity = { book, newQuantity ->
-                    cartItems = cartItems.map { item ->
-                        if (item.book.id == book.id) {
-                            item.copy(quantity = newQuantity)
-                        } else {
-                            item
-                        }
+            when (currentState) {
+                is com.example.bookstore.viewmodel.CartUiState.Loading -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
                     }
-                },
-                onCheckoutClick = onCheckoutClick,
-                selectedPickupPoint = selectedPickupPoint,
-                onPickupPointChange = { selectedPickupPoint = it },
-                orderComment = orderComment,
-                onOrderCommentChange = { orderComment = it },
-                pickupPoints = pickupPoints,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-            )
+                }
+                is com.example.bookstore.viewmodel.CartUiState.Error -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            // Access message from the local variable
+                            text = currentState.message,
+                            color = Color.Red,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+                else -> {
+                    CartContent(
+                        cartItems = cartItems,
+                        onRemoveItem = { book ->
+                            viewModel.removeBookFromCart(book.id)
+                        },
+                        onUpdateQuantity = { book, newQuantity ->
+                            viewModel.removeBookFromCart(book.id)
+                            viewModel.addBookToCart(book.id, newQuantity)
+                        },
+                        onCheckoutClick = onCheckoutClick,
+                        selectedPickupPoint = selectedPickupPoint,
+                        onPickupPointChange = { selectedPickupPoint = it },
+                        orderComment = orderComment,
+                        onOrderCommentChange = { orderComment = it },
+                        pickupPoints = pickupPoints,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding)
+                    )
+                }
+            }
         }
     }
 }

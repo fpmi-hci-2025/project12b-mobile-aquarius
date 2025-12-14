@@ -6,5 +6,5 @@ data class Book(
     val author: String,
     val price: Double,
     val imageUrl: String = "",
-    val description: String = ""
+    val description: String? = ""
 )

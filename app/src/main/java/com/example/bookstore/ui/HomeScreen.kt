@@ -11,6 +11,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.bookstore.data.mapper.BookMapper
+import com.example.bookstore.viewmodel.BookUiState
+import com.example.bookstore.viewmodel.BookViewModel
+import com.example.bookstore.viewmodel.CartViewModel
+import com.example.bookstore.viewmodel.WishlistViewModel
+import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -19,21 +26,38 @@ fun MainScreen(
     onProfileClick: () -> Unit,
     onCartClick: () -> Unit,
     onBookClick: (Book) -> Unit,
-    onSavedClick: () -> Unit
+    onSavedClick: () -> Unit,
+    viewModel: BookViewModel = hiltViewModel(),
+    cartViewModel: CartViewModel = hiltViewModel(),
+    wishlistViewModel: WishlistViewModel = hiltViewModel()
 ) {
     var selectedTab by remember { mutableStateOf(0) }
     var searchQuery by remember { mutableStateOf("") }
-
-    // Фильтрация книг по поисковому запросу
-    val filteredBooks = remember(searchQuery, getSampleProducts()) {
+    
+    val uiState by viewModel.uiState.collectAsState()
+    
+    // Загружаем книги при первом запуске
+    LaunchedEffect(Unit) {
+        viewModel.loadBooks()
+    }
+    
+    // Обработка поиска с задержкой (debounce)
+    LaunchedEffect(searchQuery) {
         if (searchQuery.isBlank()) {
-            getSampleProducts()
+            viewModel.loadBooks()
         } else {
-            getSampleProducts().filter { book ->
-                book.title.contains(searchQuery, ignoreCase = true) ||
-                        book.author.contains(searchQuery, ignoreCase = true)
+            delay(500) // Задержка 500мс перед поиском
+            if (searchQuery.isNotBlank()) {
+                viewModel.searchBooks(searchQuery)
             }
         }
+    }
+    
+    // Конвертируем BookResponse в Book
+    val currentState = uiState
+    val books = when (currentState) {
+        is BookUiState.Success -> BookMapper.toBookList(currentState.books)
+        else -> emptyList()
     }
 
     Column(
@@ -57,35 +81,101 @@ fun MainScreen(
         )
 
         // Content
-        LazyColumn(
-            modifier = Modifier
-                .weight(1f)
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            if (filteredBooks.isEmpty() && searchQuery.isNotEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp),
-                        contentAlignment = Alignment.Center
+        when (currentState) {
+            is BookUiState.Loading -> {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
+            is BookUiState.Error -> {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Text(
-                            text = "No books found for \"$searchQuery\"",
-                            color = Color.Gray,
+                            text = currentState.message,
+                            color = MaterialTheme.colorScheme.error,
                             fontSize = 16.sp
                         )
+                        Button(onClick = { viewModel.loadBooks() }) {
+                            Text("Retry")
+                        }
                     }
                 }
-            } else {
-                items(filteredBooks) { product ->
-                    BookCardItem(
-                        book = product,
-                        onAddToCart = { /* Handle add to cart */ },
-                        onBookmark = { /* Handle bookmark */ },
-                        onBookClick = { onBookClick(product) }
-                    )
+            }
+            is BookUiState.Success -> {
+                LazyColumn(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    if (books.isEmpty() && searchQuery.isNotEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(200.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "No books found for \"$searchQuery\"",
+                                    color = Color.Gray,
+                                    fontSize = 16.sp
+                                )
+                            }
+                        }
+                    } else if (books.isEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(200.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "No books available",
+                                    color = Color.Gray,
+                                    fontSize = 16.sp
+                                )
+                            }
+                        }
+                    } else {
+                        items(books) { book ->
+                            BookCardItem(
+                                book = book,
+                                onAddToCart = {
+                                    cartViewModel.addBookToCart(book.id, 1)
+                                },
+                                onBookmark = {
+                                    wishlistViewModel.addToWishlist(book.id)
+                                },
+                                onBookClick = { onBookClick(book) }
+                            )
+                        }
+                    }
+                }
+            }
+            is BookUiState.Idle -> {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
                 }
             }
         }

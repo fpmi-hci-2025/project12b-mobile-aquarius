@@ -1,5 +1,8 @@
 package com.example.bookstore.ui
 
+import android.graphics.BitmapFactory
+import android.util.Base64
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -12,9 +15,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.bookstore.viewmodel.CartViewModel
+import com.example.bookstore.viewmodel.WishlistViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -24,9 +32,29 @@ fun BookDetailScreen(
     onProfileClick: () -> Unit,
     onCartClick: () -> Unit,
     onAddToCart: () -> Unit,
-    onSavedClick: () -> Unit
+    onSavedClick: () -> Unit,
+    cartViewModel: CartViewModel = hiltViewModel(),
+    wishlistViewModel: WishlistViewModel = hiltViewModel()
 ) {
     var selectedTab by remember { mutableStateOf(0) }
+    // Проверяем, есть ли книга в wishlist
+    LaunchedEffect(book.id) {
+        wishlistViewModel.loadWishlist()
+    }
+
+    val wishlistState by wishlistViewModel.uiState.collectAsState()
+
+    // Use remember with derivedStateOf
+    val isInWishlist by remember(wishlistState, book.id) {
+        derivedStateOf {
+            when (val state = wishlistState) {
+                is com.example.bookstore.viewmodel.WishlistUiState.Success -> {
+                    state.wishlist.any { it.bookId == book.id }
+                }
+                else -> false
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -58,11 +86,43 @@ fun BookDetailScreen(
                     .background(Color.Gray),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "Book Cover",
-                    color = Color.White,
-                    fontSize = 16.sp
-                )
+                if (book.imageUrl.isNotBlank()) {
+                    val bitmap = remember(book.imageUrl) {
+                        try {
+                            // Извлекаем base64 часть из data URI если есть
+                            val base64String = if (book.imageUrl.startsWith("data:image")) {
+                                book.imageUrl.substringAfter(",")
+                            } else {
+                                book.imageUrl
+                            }
+                            val imageBytes = Base64.decode(base64String, Base64.DEFAULT)
+                            BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                    
+                    bitmap?.let {
+                        Image(
+                            bitmap = it.asImageBitmap(),
+                            contentDescription = book.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } ?: run {
+                        Text(
+                            text = "Book Cover",
+                            color = Color.White,
+                            fontSize = 16.sp
+                        )
+                    }
+                } else {
+                    Text(
+                        text = "Book Cover",
+                        color = Color.White,
+                        fontSize = 16.sp
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -94,7 +154,7 @@ fun BookDetailScreen(
 
             // Book Description
             Text(
-                text = "Популярный язык программирования C используется в самых разных приложениях: от миниатюрных микроконтроллеров, используемых в тостерах и часах, до полноценных операционных систем. Первая половина этой книги представляет собой введение в C и охватывает основы написания простых программ командной строки. Во второй половине книги показано, как использовать набор инструментов пользовательского интерфейса GTK с C для создания многофункциональных графических приложений, которые можно запускать на настольном компьютере.",
+                text = book.description!!.ifEmpty { "No description available" },
                 color = Color.Black,
                 fontSize = 14.sp,
                 lineHeight = 20.sp,
@@ -110,7 +170,13 @@ fun BookDetailScreen(
             ) {
                 // Outline Button 1
                 OutlinedButton(
-                    onClick = { /* Handle first action */ },
+                    onClick = {
+                        if (isInWishlist) {
+                            wishlistViewModel.removeFromWishlist(book.id)
+                        } else {
+                            wishlistViewModel.addToWishlist(book.id)
+                        }
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp),
@@ -121,7 +187,7 @@ fun BookDetailScreen(
                     )
                 ) {
                     Text(
-                        text = "Добавить в избранное",
+                        text = if (isInWishlist) "Удалить из избранного" else "Добавить в избранное",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
                         letterSpacing = 0.1.sp,
@@ -131,7 +197,10 @@ fun BookDetailScreen(
 
                 // Tonal Button
                 Button(
-                    onClick = onAddToCart,
+                    onClick = {
+                        cartViewModel.addBookToCart(book.id, 1)
+                        onAddToCart()
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp),

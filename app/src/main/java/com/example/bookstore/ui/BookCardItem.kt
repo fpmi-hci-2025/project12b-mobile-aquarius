@@ -1,5 +1,8 @@
 package com.example.bookstore.ui
 
+import android.graphics.BitmapFactory
+import android.util.Base64
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,10 +29,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -58,14 +64,46 @@ fun BookCardItem(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(188.dp)
-                    .background(Color.Gray), // Placeholder for image
+                    .background(Color.Gray),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "Book Cover",
-                    color = Color.White,
-                    fontSize = 16.sp
-                )
+                if (book.imageUrl.isNotBlank()) {
+                    val bitmap = remember(book.imageUrl) {
+                        try {
+                            // Извлекаем base64 часть из data URI если есть
+                            val base64String = if (book.imageUrl.startsWith("data:image")) {
+                                book.imageUrl.substringAfter(",")
+                            } else {
+                                book.imageUrl
+                            }
+                            val imageBytes = Base64.decode(base64String, Base64.DEFAULT)
+                            BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                    
+                    bitmap?.let {
+                        Image(
+                            bitmap = it.asImageBitmap(),
+                            contentDescription = book.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } ?: run {
+                        Text(
+                            text = "Book Cover",
+                            color = Color.White,
+                            fontSize = 16.sp
+                        )
+                    }
+                } else {
+                    Text(
+                        text = "Book Cover",
+                        color = Color.White,
+                        fontSize = 16.sp
+                    )
+                }
             }
 
             // Text content

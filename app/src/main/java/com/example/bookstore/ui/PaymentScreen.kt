@@ -11,6 +11,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.bookstore.data.model.CreateOrderRequest
+import com.example.bookstore.data.model.OrderItemRequest
+import com.example.bookstore.viewmodel.CartViewModel
+import com.example.bookstore.viewmodel.OrderViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -19,10 +24,30 @@ fun PaymentScreen(
     onProfileClick: () -> Unit,
     onSavedClick: () -> Unit,
     onHomeClick: () -> Unit,
-    onPaymentComplete: () -> Unit
+    onPaymentComplete: () -> Unit,
+    cartViewModel: CartViewModel = hiltViewModel(),
+    orderViewModel: OrderViewModel = hiltViewModel()
 ) {
     var selectedTab by remember { mutableStateOf(1) }
-    var showConfirmationDialog by remember { mutableStateOf(false) } // Диалог на экране оплаты
+    var showConfirmationDialog by remember { mutableStateOf(false) }
+    var deliveryAddress by remember { mutableStateOf("") }
+    var customerNotes by remember { mutableStateOf("") }
+    
+    val cartState by cartViewModel.uiState.collectAsState()
+    val orderState by orderViewModel.createOrderState.collectAsState()
+    
+    // Загружаем корзину при первом запуске
+    LaunchedEffect(Unit) {
+        cartViewModel.loadCart()
+    }
+    
+    // Обрабатываем успешное создание заказа
+    LaunchedEffect(orderState) {
+        val currentOrderState = orderState
+        if (currentOrderState is com.example.bookstore.viewmodel.CreateOrderUiState.Success) {
+            onPaymentComplete()
+        }
+    }
 
     // Диалог подтверждения оплаты
     if (showConfirmationDialog) {
@@ -30,7 +55,39 @@ fun PaymentScreen(
             onDismiss = { showConfirmationDialog = false },
             onConfirm = {
                 showConfirmationDialog = false
-                onPaymentComplete() // Завершаем оплату после подтверждения
+                val currentCartState = cartState
+                when (currentCartState) {
+                    is com.example.bookstore.viewmodel.CartUiState.Success -> {
+                        // Двойная проверка
+                        val validOrderItems = currentCartState.cart.cartItems
+                            .filter { cartItem ->
+                                // Более строгая проверка
+                                cartItem.bookId.isNotBlank() &&
+                                        cartItem.bookId != "00000000-0000-0000-0000-000000000000" &&
+                                        cartItem.bookId.matches(Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"))
+                            }
+                            .map { cartItem ->
+                                OrderItemRequest(
+                                    bookId = cartItem.bookId,
+                                    count = cartItem.quantity
+                                )
+                            }
+
+                        if (validOrderItems.isEmpty()) {
+                            // Показать сообщение пользователю
+                            // Например, используя Snackbar или Toast
+                            return@PaymentConfirmationDialog
+                        }
+
+                        val request = CreateOrderRequest(
+                            customerNotes = customerNotes.ifBlank { null },
+                            deliveryAddress = deliveryAddress.ifBlank { null },
+                            orderItems = validOrderItems
+                        )
+                        orderViewModel.createOrder(request)
+                    }
+                    else -> {}
+                }
             }
         )
     }
@@ -61,12 +118,46 @@ fun PaymentScreen(
         },
         containerColor = Color.White
     ) { innerPadding ->
-        PaymentContent(
-            onPayNowClick = { showConfirmationDialog = true }, // Показываем диалог при нажатии
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        )
+        val currentCartState = cartState
+        when (currentCartState) {
+            is com.example.bookstore.viewmodel.CartUiState.Loading -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding),
+                    contentAlignment = androidx.compose.ui.Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            }
+            is com.example.bookstore.viewmodel.CartUiState.Success -> {
+                PaymentContent(
+                    cart = currentCartState.cart,
+                    onPayNowClick = { showConfirmationDialog = true },
+                    deliveryAddress = deliveryAddress,
+                    onDeliveryAddressChange = { deliveryAddress = it },
+                    customerNotes = customerNotes,
+                    onCustomerNotesChange = { customerNotes = it },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding)
+                )
+            }
+            is com.example.bookstore.viewmodel.CartUiState.Error -> {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding),
+                    contentAlignment = androidx.compose.ui.Alignment.Center
+                ) {
+                    Text(
+                        text = currentCartState.message,
+                        color = Color.Red
+                    )
+                }
+            }
+            else -> {}
+        }
     }
 }
 
@@ -74,7 +165,12 @@ fun PaymentScreen(
 
 @Composable
 fun PaymentContent(
-    onPayNowClick: () -> Unit, // Изменили параметр
+    cart: com.example.bookstore.data.model.CartResponse,
+    onPayNowClick: () -> Unit,
+    deliveryAddress: String,
+    onDeliveryAddressChange: (String) -> Unit,
+    customerNotes: String,
+    onCustomerNotesChange: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var cardNumber by remember { mutableStateOf("") }
@@ -140,10 +236,35 @@ fun PaymentContent(
                 )
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Delivery Address Field
+            PaymentTextField(
+                value = deliveryAddress,
+                onValueChange = onDeliveryAddressChange,
+                label = "Delivery Address",
+                placeholder = "Enter delivery address",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            )
+            
+            // Customer Notes Field
+            PaymentTextField(
+                value = customerNotes,
+                onValueChange = onCustomerNotesChange,
+                label = "Customer Notes (Optional)",
+                placeholder = "Add any special instructions...",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Order Summary
             OrderSummarySection(
+                cart = cart,
                 modifier = Modifier.fillMaxWidth()
             )
         }
@@ -219,6 +340,7 @@ fun PaymentTextField(
 
 @Composable
 fun OrderSummarySection(
+    cart: com.example.bookstore.data.model.CartResponse,
     modifier: Modifier = Modifier
 ) {
     Card(
@@ -242,9 +364,8 @@ fun OrderSummarySection(
             )
 
             // Order Items
-            OrderItem("Items (3)", "$129.97")
-            OrderItem("Shipping", "Free")
-            OrderItem("Tax", "$12.99")
+            OrderItem("Items (${cart.totalItems})", "$${String.format("%.2f", cart.itemsPrice)}")
+            OrderItem("Shipping", if (cart.shippingCost == 0.0) "Free" else "$${String.format("%.2f", cart.shippingCost)}")
 
             Divider(
                 color = Color(0xFF49454F).copy(alpha = 0.2f),
@@ -252,7 +373,7 @@ fun OrderSummarySection(
                 modifier = Modifier.padding(vertical = 8.dp)
             )
 
-            OrderItem("Total", "$142.96", isTotal = true)
+            OrderItem("Total", "$${String.format("%.2f", cart.totalPrice)}", isTotal = true)
         }
     }
 }

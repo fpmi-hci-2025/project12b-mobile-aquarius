@@ -1,6 +1,7 @@
 package com.example.bookstore
 
 import androidx.compose.runtime.*
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.example.bookstore.ui.Book
 import com.example.bookstore.ui.BookDetailScreen
 import com.example.bookstore.ui.CartScreen
@@ -10,11 +11,11 @@ import com.example.bookstore.ui.PaymentScreen
 import com.example.bookstore.ui.ProfileScreen
 import com.example.bookstore.ui.SavedScreen
 import com.example.bookstore.ui.SignUpScreen
+import com.example.bookstore.viewmodel.AuthViewModel
 
 class NavigationController {
     var currentScreen by mutableStateOf("main")
         private set
-    var isUserLoggedIn by mutableStateOf(false) // Добавляем состояние авторизации
 
     fun navigateTo(screen: String) {
         currentScreen = screen
@@ -29,12 +30,10 @@ class NavigationController {
     }
 
     fun login() {
-        isUserLoggedIn = true
         currentScreen = "main"
     }
 
     fun logout() {
-        isUserLoggedIn = false
         currentScreen = "main"
     }
 }
@@ -43,10 +42,14 @@ class NavigationController {
 fun AppNavigation() {
     val navigationController = remember { NavigationController() }
     var selectedBook by remember { mutableStateOf<Book?>(null) }
+    val authViewModel: AuthViewModel = hiltViewModel()
+    
+    // Реактивно отслеживаем статус входа через Flow
+    val isUserLoggedIn by authViewModel.isLoggedInFlow().collectAsState()
 
     // Обработчик для профиля с проверкой авторизации
     val onProfileClick: () -> Unit = {
-        if (navigationController.isUserLoggedIn) {
+        if (isUserLoggedIn) {
             navigationController.navigateTo("profile")
         } else {
             navigationController.navigateTo("login")
@@ -106,17 +109,32 @@ fun AppNavigation() {
         } ?: run {
             navigationController.navigateTo("main")
         }
-        "profile" -> if (navigationController.isUserLoggedIn) {
-            ProfileScreen(
-                onBackClick = { navigationController.navigateBack() },
-                onProfileClick = onProfileClick,
-                onSavedClick = { navigationController.navigateTo("saved") },
-                onHomeClick = { navigationController.navigateTo("main") },
-                onCartClick = { navigationController.navigateTo("cart") },
-                onLogoutClick = { navigationController.logout() }
-            )
-        } else {
-            navigationController.navigateTo("login")
+        "profile" -> {
+            // Используем LaunchedEffect для реактивной проверки состояния входа
+            LaunchedEffect(isUserLoggedIn, navigationController.currentScreen) {
+                if (navigationController.currentScreen == "profile" && !isUserLoggedIn) {
+                    navigationController.navigateTo("login")
+                }
+            }
+            
+            if (isUserLoggedIn) {
+                ProfileScreen(
+                    onBackClick = { navigationController.navigateBack() },
+                    onProfileClick = onProfileClick,
+                    onSavedClick = { navigationController.navigateTo("saved") },
+                    onHomeClick = { navigationController.navigateTo("main") },
+                    onCartClick = { navigationController.navigateTo("cart") },
+                    onLogoutClick = { 
+                        // Выход обрабатывается в ProfileScreen через AuthViewModel
+                        navigationController.logout() 
+                    }
+                )
+            } else {
+                // Если не авторизован, перенаправляем на логин
+                LaunchedEffect(Unit) {
+                    navigationController.navigateTo("login")
+                }
+            }
         }
         "payment" -> PaymentScreen(
             onBackClick = { navigationController.navigateBack() },

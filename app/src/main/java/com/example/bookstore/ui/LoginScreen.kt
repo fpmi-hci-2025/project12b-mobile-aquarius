@@ -1,7 +1,5 @@
 package com.example.bookstore.ui
 
-import android.os.Handler
-import android.os.Looper
 import android.util.Patterns
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -9,19 +7,34 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.hilt.navigation.compose.hiltViewModel
+import com.example.bookstore.viewmodel.LoginUiState
+import com.example.bookstore.viewmodel.LoginViewModel
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
     onBackClick: () -> Unit,
     onSignUpClick: () -> Unit,
-    onLoginSuccess: () -> Unit
+    onLoginSuccess: () -> Unit,
+    viewModel: LoginViewModel = hiltViewModel()
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
-    var isLoading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+    
+    val uiState by viewModel.uiState.collectAsState()
+    
+    // Сбрасываем состояние при открытии экрана
+    LaunchedEffect(Unit) {
+        viewModel.resetState()
+    }
+    
+    val currentUiState = uiState
 
     Column(
         modifier = Modifier
@@ -46,14 +59,21 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(40.dp))
 
             // Error message
-            errorMessage?.let { message ->
-                Text(
-                    text = message,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp)
-                )
+            when (currentUiState) {
+                is LoginUiState.Error -> {
+                    Text(
+                        text = currentUiState.message,
+                        style = TextStyle(
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.error,
+                            lineHeight = 20.sp
+                        ),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 16.dp)
+                    )
+                }
+                else -> {}
             }
 
             // Email Text Field
@@ -61,7 +81,7 @@ fun LoginScreen(
                 value = email,
                 onValueChange = {
                     email = it
-                    errorMessage = null // Clear error when user starts typing
+                    if (currentUiState is LoginUiState.Error) viewModel.resetState()
                 },
                 label = "Email",
                 modifier = Modifier.fillMaxWidth()
@@ -74,7 +94,7 @@ fun LoginScreen(
                 value = password,
                 onValueChange = {
                     password = it
-                    errorMessage = null // Clear error when user starts typing
+                    if (currentUiState is LoginUiState.Error) viewModel.resetState()
                 },
                 label = "Password",
                 modifier = Modifier.fillMaxWidth()
@@ -83,63 +103,86 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             // Login Button
-            PrimaryButton(
-                text = if (isLoading) "Logging in..." else "Login",
+            Button(
                 onClick = {
-                    if (isLoading) return@PrimaryButton
+                    if (currentUiState is LoginUiState.Loading) return@Button
 
                     // Basic validation
                     if (email.isEmpty() || password.isEmpty()) {
-                        errorMessage = "Please fill in all fields"
-                        return@PrimaryButton
+                        viewModel.setError("Please fill in all fields")
+                        return@Button
                     }
 
                     if (!isValidEmail(email)) {
-                        errorMessage = "Please enter a valid email address"
-                        return@PrimaryButton
+                        viewModel.setError("Please enter a valid email address")
+                        return@Button
                     }
 
-                    // Simulate login process
-                    isLoading = true
-                    errorMessage = null
-
-                    // In real app, you would call your API here
-                    simulateLogin(email, password) { success ->
-                        isLoading = false
-                        if (success) {
-                            onLoginSuccess()
-                        } else {
-                            errorMessage = "Invalid email or password"
-                        }
+                    // Call ViewModel to login
+                    coroutineScope.launch {
+                        viewModel.login(email, password)
                     }
                 },
-                modifier = Modifier.fillMaxWidth(),
-            )
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                enabled = currentUiState !is LoginUiState.Loading,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFF1D1B20),
+                    contentColor = Color.White
+                )
+            ) {
+                if (currentUiState is LoginUiState.Loading) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(20.dp)
+                    )
+                } else {
+                    Text(
+                        text = "Login",
+                        fontSize = 16.sp,
+                        lineHeight = 24.sp
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.height(12.dp))
 
             // Sign Up Button
-            SecondaryButton(
-                text = "Create Account",
+            TextButton(
                 onClick = {
-                    if (!isLoading) {
+                    if (currentUiState !is LoginUiState.Loading) {
                         onSignUpClick()
                     }
                 },
-                modifier = Modifier.fillMaxWidth(),
-            )
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                enabled = currentUiState !is LoginUiState.Loading
+            ) {
+                Text(
+                    text = "Create Account",
+                    fontSize = 16.sp,
+                    lineHeight = 24.sp,
+                    color = Color(0xFF1D1B20)
+                )
+            }
         }
     }
-}
 
-// Helper function to simulate login
-private fun simulateLogin(email: String, password: String, callback: (Boolean) -> Unit) {
-    // Simulate network delay
-    Handler(Looper.getMainLooper()).postDelayed({
-        // Simple mock validation - in real app, this would be API call
-        val isValid = email.isNotEmpty() && password.length >= 1
-        callback(isValid)
-    }, 1500)
+    // Handle successful login
+    LaunchedEffect(uiState) {
+        val currentState = uiState
+        when (currentState) {
+            is LoginUiState.Success -> {
+                // Сбрасываем состояние после успешного входа
+                viewModel.resetState()
+                onLoginSuccess()
+            }
+            else -> {}
+        }
+    }
 }
 
 // Email validation helper
