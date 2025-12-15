@@ -1,6 +1,7 @@
 package com.example.bookstore.data.api
 
 import com.example.bookstore.data.model.CreateOrderRequest
+import com.example.bookstore.data.model.CreateOrderResponse
 import com.example.bookstore.data.model.Order
 import com.example.bookstore.data.model.PaymentRequest
 import retrofit2.http.Body
@@ -19,7 +20,7 @@ interface OrderApiService {
     @POST("api/orders")
     suspend fun createOrder(
         @Body request: CreateOrderRequest
-    ): retrofit2.Response<Void>
+    ): CreateOrderResponse  // Изменено с Response<Void> на CreateOrderResponse
     
     @GET("api/orders/{orderId}/status")
     suspend fun getOrderStatus(

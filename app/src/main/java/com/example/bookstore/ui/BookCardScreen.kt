@@ -187,7 +187,7 @@ fun BookDetailScreen(
                     )
                 ) {
                     Text(
-                        text = if (isInWishlist) "Удалить из избранного" else "Добавить в избранное",
+                        text = if (isInWishlist) "Remove from favorites" else "Add to favorites",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,
                         letterSpacing = 0.1.sp,
@@ -210,7 +210,7 @@ fun BookDetailScreen(
                     )
                 ) {
                     Text(
-                        text = "Добавить в корзину",
+                        text = "Add to cart",
                         color = Color.White,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium,

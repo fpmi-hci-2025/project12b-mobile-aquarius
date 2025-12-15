@@ -34,6 +34,11 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
 import kotlinx.coroutines.launch
+import android.graphics.BitmapFactory
+import android.util.Base64
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -76,12 +81,8 @@ fun CartScreen(
                 }
             }
             is com.example.bookstore.viewmodel.CreateOrderUiState.Success -> {
-                // Заказ создан успешно - сразу оплачиваем
-                val cartState = uiState
-                if (cartState is com.example.bookstore.viewmodel.CartUiState.Success) {
-                    val totalPrice = cartState.cart.totalPrice
-                    orderViewModel.payOrder(state.orderId, "Card", totalPrice)
-                }
+                // Заказ создан успешно - сразу оплачиваем используя totalAmount из заказа
+                orderViewModel.payOrder(state.orderId, "Card", state.totalAmount)  // Используем totalAmount из заказа
             }
             else -> {}
         }
@@ -486,7 +487,7 @@ fun CartItemCard(
                 .padding(16.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Book Cover Placeholder
+            // Book Cover Image
             Box(
                 modifier = Modifier
                     .size(80.dp)
@@ -494,12 +495,45 @@ fun CartItemCard(
                     .background(Color(0xFFEADDFF)),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "Cover",
-                    color = Color(0xFF4F378A),
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium
-                )
+                if (cartItem.book.imageUrl.isNotBlank()) {
+                    val bitmap = remember(cartItem.book.imageUrl) {
+                        try {
+                            // Извлекаем base64 часть из data URI если есть
+                            val base64String = if (cartItem.book.imageUrl.startsWith("data:image")) {
+                                cartItem.book.imageUrl.substringAfter(",")
+                            } else {
+                                cartItem.book.imageUrl
+                            }
+                            val imageBytes = Base64.decode(base64String, Base64.DEFAULT)
+                            BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+                        } catch (e: Exception) {
+                            null
+                        }
+                    }
+                    
+                    bitmap?.let {
+                        Image(
+                            bitmap = it.asImageBitmap(),
+                            contentDescription = cartItem.book.title,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } ?: run {
+                        Text(
+                            text = "Cover",
+                            color = Color(0xFF4F378A),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                } else {
+                    Text(
+                        text = "Cover",
+                        color = Color(0xFF4F378A),
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
             }
 
             // Book Details
@@ -621,141 +655,8 @@ fun QuantitySelector(
     }
 }
 
-@Composable
-fun OrderSummary(
-    totalPrice: Double,
-    itemCount: Int,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xFFF3F3F3)
-        )
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
-        ) {
-            Text(
-                text = "Order Summary",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFF1D1B20)
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Items ($itemCount)",
-                    fontSize = 14.sp,
-                    color = Color(0xFF49454F)
-                )
-                Text(
-                    text = "$${String.format("%.2f", totalPrice)}",
-                    fontSize = 14.sp,
-                    color = Color(0xFF49454F)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Shipping",
-                    fontSize = 14.sp,
-                    color = Color(0xFF49454F)
-                )
-                Text(
-                    text = "Free",
-                    fontSize = 14.sp,
-                    color = Color(0xFF49454F)
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Divider(
-                color = Color(0xFF49454F).copy(alpha = 0.2f),
-                thickness = 1.dp
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Total",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFF1D1B20)
-                )
-                Text(
-                    text = "$${String.format("%.2f", totalPrice)}",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFF1D1B20)
-                )
-            }
-        }
-    }
-}
-
 // Data classes
 data class CartItem(
     val book: Book,
     val quantity: Int = 1
 )
-
-// Sample data
-fun getSampleCartItems(): List<CartItem> {
-    return listOf(
-        CartItem(
-            book = Book(
-                id = "1",
-                title = "GUI Programming 2nd edition",
-                author = "John Doe",
-                price = 29.99
-            ),
-            quantity = 1
-        ),
-        CartItem(
-            book = Book(
-                id = "2",
-                title = "Advanced Android Development",
-                author = "Jane Smith",
-                price = 34.99
-            ),
-            quantity = 2
-        ),
-        CartItem(
-            book = Book(
-                id = "3",
-                title = "Kotlin Programming",
-                author = "Mike Johnson",
-                price = 24.99
-            ),
-            quantity = 1
-        ),
-        CartItem(
-            book = Book(
-                id = "4",
-                title = "Android Architecture",
-                author = "Sarah Wilson",
-                price = 39.99
-            ),
-            quantity = 1
-        )
-    )
-}

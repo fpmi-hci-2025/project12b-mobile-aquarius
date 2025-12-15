@@ -7,7 +7,6 @@ class UserManagerTest {
 
     @Test
     fun getFullName_returnsFormattedName() {
-        // Тестируем логику форматирования имени
         val firstName = "John"
         val lastName = "Doe"
         val expected = "$firstName $lastName".trim()
@@ -42,3 +41,4 @@ class UserManagerTest {
         assertTrue(fullName.isEmpty())
     }
 }
+

@@ -15,21 +15,11 @@ class OrderRepository @Inject constructor(
         return orderApiService.getOrders(pageNumber, pageSize)
     }
     
-    suspend fun createOrder(request: CreateOrderRequest): Result<String> {
+    suspend fun createOrder(request: CreateOrderRequest): Result<Pair<String, Double>> {  // Возвращаем orderId и totalAmount
         return try {
             val response = orderApiService.createOrder(request)
-            if (response.isSuccessful) {
-                // Извлекаем orderId из заголовка Location
-                val locationHeader = response.headers()["Location"]
-                val orderId = locationHeader?.substringAfterLast("/") ?: ""
-                if (orderId.isNotEmpty()) {
-                    Result.success(orderId)
-                } else {
-                    Result.failure(Exception("Order ID not found in response"))
-                }
-            } else {
-                Result.failure(Exception("Failed to create order: ${response.code()}"))
-            }
+            // Извлекаем orderId и totalAmount из тела ответа
+            Result.success(Pair(response.id, response.totalAmount))
         } catch (e: Exception) {
             Result.failure(e)
         }

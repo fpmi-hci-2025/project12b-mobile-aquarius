@@ -26,3 +26,4 @@ object PriceFormatter {
         return "$${String.format("%.2f", price)}"
     }
 }
+

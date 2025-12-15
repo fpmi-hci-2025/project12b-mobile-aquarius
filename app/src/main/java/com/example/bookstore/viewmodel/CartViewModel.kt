@@ -19,24 +19,21 @@ class CartViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<CartUiState>(CartUiState.Idle)
     val uiState: StateFlow<CartUiState> = _uiState.asStateFlow()
 
+    private val _bookImagesCache = mutableMapOf<String, String>()
+
     fun loadCart() {
         viewModelScope.launch {
             _uiState.value = CartUiState.Loading
             try {
                 val cart = cartRepository.getCart()
-                // Проверяем, что корзина не содержит невалидных элементов
-                val validCart = cart.copy(
-                    cartItems = cart.cartItems.filter { 
-                        it.bookId.isNotBlank() && 
-                        it.bookId != "00000000-0000-0000-0000-000000000000"
-                    }
-                )
-                _uiState.value = CartUiState.Success(validCart)
+
+                // Просто используем корзину как есть, не перезаписывая base64CoverImage
+                _uiState.value = CartUiState.Success(cart)
             } catch (e: Exception) {
                 _uiState.value = CartUiState.Error(
                     message = when {
                         e.message?.contains("401") == true -> "Please login to view your cart"
-                        e.message?.contains("network", ignoreCase = true) == true -> 
+                        e.message?.contains("network", ignoreCase = true) == true ->
                             "Network error. Please check your internet connection."
                         else -> e.message ?: "Failed to load cart"
                     }

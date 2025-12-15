@@ -46,8 +46,8 @@ class OrderViewModel @Inject constructor(
             _createOrderState.value = CreateOrderUiState.Loading
             try {
                 val result = orderRepository.createOrder(request)
-                result.onSuccess { orderId ->
-                    _createOrderState.value = CreateOrderUiState.Success(orderId)
+                result.onSuccess { (orderId, totalAmount) ->  // Деструктурируем пару
+                    _createOrderState.value = CreateOrderUiState.Success(orderId, totalAmount)  // Передаем оба значения
                     loadOrders() // Reload orders after creating
                 }.onFailure { e ->
                     _createOrderState.value = CreateOrderUiState.Error(
@@ -118,7 +118,7 @@ sealed class OrdersUiState {
 sealed class CreateOrderUiState {
     data object Idle : CreateOrderUiState()
     data object Loading : CreateOrderUiState()
-    data class Success(val orderId: String) : CreateOrderUiState()
+    data class Success(val orderId: String, val totalAmount: Double) : CreateOrderUiState()  // Добавлен totalAmount
     data class Error(val message: String) : CreateOrderUiState()
 }
 

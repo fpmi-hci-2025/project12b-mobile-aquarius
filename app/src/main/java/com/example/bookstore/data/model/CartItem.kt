@@ -5,5 +5,6 @@ data class CartItem(
     val bookTitle: String,
     val bookPrice: Double,
     val quantity: Int,
-    val totalPrice: Double
+    val totalPrice: Double,
+    val base64CoverImage: String? = null  // Добавлено поле для изображения
 )

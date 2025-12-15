@@ -338,8 +338,8 @@ fun OrderCard(order: Order) {
                 
                 // Format date
                 val formattedDate = try {
-                    val inputFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.getDefault())
-                    val outputFormat = SimpleDateFormat("MMM dd, yyyy", Locale.getDefault())
+                    val inputFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.ENGLISH)
+                    val outputFormat = SimpleDateFormat("MMM dd, yyyy", Locale.ENGLISH)
                     val date = inputFormat.parse(order.createdAt)
                     date?.let { outputFormat.format(it) } ?: order.createdAt
                 } catch (e: Exception) {

@@ -42,5 +42,9 @@ class BookRepository @Inject constructor(
             pageSize = pageSize
         )
     }
+
+//    suspend fun getBookById(bookId: String): BookResponse {
+//        return bookApiService.getBookById(bookId)
+//    }
 }
 

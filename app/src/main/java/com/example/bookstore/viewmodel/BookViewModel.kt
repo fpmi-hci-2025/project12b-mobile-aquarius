@@ -22,7 +22,7 @@ class BookViewModel @Inject constructor(
     fun loadBooks(
         title: String? = null,
         pageNumber: Int = 1,
-        pageSize: Int = 20
+        pageSize: Int = 100
     ) {
         viewModelScope.launch {
             _uiState.value = BookUiState.Loading
