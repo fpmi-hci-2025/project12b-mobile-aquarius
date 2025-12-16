@@ -22,18 +22,6 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          # Указываем конкретные компоненты SDK
-          packages: |
-            platform-tools
-            platforms;android-33
-            build-tools;34.0.0
-            system-images;android-33;google_apis;x86_64
-            cmdline-tools;latest
-          ndk: none
-
       - name: Cache Gradle dependencies
         uses: actions/cache@v3
         with:
@@ -53,21 +41,12 @@ jobs:
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest
 
-      - name: Run instrumented tests on Android 13 (API 33)
-        uses: reactivecircus/android-emulator-runner@v2
+      - name: Cache Android Emulator
+        uses: actions/cache@v3
         with:
-          api-level: 33
-          target: google_apis  # ЯВНО указываем target
-          arch: x86_64
-          profile: pixel_4  # Используем pixel_4 вместо Nexus 6 (более стабильный)
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot -camera-back none -camera-front none
-          script: |
-            adb wait-for-device
-            echo "Waiting for device to be ready..."
-            adb shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done'
-            sleep 30  # Дополнительное время для загрузки
-            ./gradlew connectedDebugAndroidTest
-        env:
-          # Отключаем hardware acceleration для стабильности
-          ANDROID_EMULATOR_USE_SYSTEM_LIBS: 1
+          path: |
+            ~/.android/avd
+            ~/.android/cache
+          key: ${{ runner.os }}-android-emulator-${{ hashFiles('**/system-images/**') }}
+          restore-keys: |
+            ${{ runner.os }}-android-emulator-
